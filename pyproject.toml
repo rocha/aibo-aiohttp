@@ -9,6 +9,7 @@ python = "^3.8"
 aiohttp = {extras = ["speedups"], version = "^3.7.3"}
 aiohttp_jinja2 = "^1.4.2"
 jinja2 = "^2.11.3"
+coloredlogs = "^15.0"
 
 [tool.poetry.dev-dependencies]
 
