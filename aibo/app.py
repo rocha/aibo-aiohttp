@@ -116,25 +116,32 @@ def create_update_task(app, capability, wait_time):
 
 
 async def update_status(app, capability, wait_time):
-    api = app["api"]
     app["aibo"][capability] = None
     while True:
-        response = await api.execute(capability)
-        if response.get("status") == "SUCCEEDED":
-            new_status = response["result"].get(capability, None)
-        else:
-            new_status = None
-
-        old_status = app["aibo"][capability]
-        app["aibo"][capability] = new_status
-
-        if new_status != old_status:
-            event = {
-                "deviceId": api.device_id,
-                "data": {capability: new_status},
-                "eventId": capability,
-                "timestamp": int(time.time() * 1000),
-            }
-            await send_ws_event(app, event)
+        try:
+            await _run_update_status(app, capability)
+        except Exception as e:
+            logger.exception(e)
 
         await asyncio.sleep(wait_time)
+
+
+async def _run_update_status(app, capability):
+    api = app["api"]
+    response = await api.execute(capability)
+    if response.get("status") == "SUCCEEDED":
+        new_status = response["result"].get(capability, None)
+    else:
+        new_status = None
+
+    old_status = app["aibo"][capability]
+    app["aibo"][capability] = new_status
+
+    if new_status != old_status:
+        event = {
+            "deviceId": api.device_id,
+            "data": {capability: new_status},
+            "eventId": capability,
+            "timestamp": int(time.time() * 1000),
+        }
+        await send_ws_event(app, event)
