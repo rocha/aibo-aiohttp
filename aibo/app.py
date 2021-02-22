@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from datetime import datetime
 from pprint import pformat, pprint
 
@@ -23,13 +24,18 @@ async def index(request):
     return {"time": now, "state": state}
 
 
+@routes.get("/status")
+async def get_status(request):
+    status = request.app["aibo"]
+    return web.json_response(status)
+
+
 @routes.get("/ws")
 async def websocket(request):
     ws = web.WebSocketResponse()
 
     await ws.prepare(request)
     request.app["ws"].append(ws)
-    await send_status(request.app, ws)
 
     try:
         async for msg in ws:
@@ -60,20 +66,25 @@ async def client_session_ctx(app):
 async def on_startup(app):
     api = app["api"]
 
-    api.add_event_callback(lambda e: send_event(app, e))
+    api.add_event_callback(lambda e: send_ws_event(app, e))
 
     task = asyncio.create_task(api.get_devices())
     task.add_done_callback(lambda t: pprint(t.result().get("devices", [])))
 
     create_update_task(app, "posture_status", 10)
+    create_update_task(app, "name_called_status", 10)
     create_update_task(app, "sleepy_status", 30)
     create_update_task(app, "hungry_status", 30)
+    create_update_task(app, "body_touched_status", 30)
+    create_update_task(app, "voice_command_status", 30)
+    create_update_task(app, "found_objects_status", 30)
 
 
 async def init():
     app = web.Application()
 
-    aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader("./aibo/templates"))
+    loader = jinja2.FileSystemLoader("./aibo/templates")
+    aiohttp_jinja2.setup(app, loader=loader)
 
     routes.static("/", "./aibo/static")
     app.add_routes(routes)
@@ -85,26 +96,16 @@ async def init():
     return app
 
 
-async def send_ws(app, data, ws=None):
+async def send_ws_event(app, event_data, ws=None):
     sockets = app["ws"] if ws is None else [ws]
     for s in sockets:
         if s.closed:
             app["ws"].remove(s)
         else:
             try:
-                await s.send_json(data)
+                await s.send_json(event_data)
             except ValueError:
                 logger.error("Invalid data")
-
-
-async def send_status(app, ws=None):
-    data = {"type": "status", "status": app["aibo"], "time": str(datetime.now())}
-    await send_ws(app, data, ws)
-
-
-async def send_event(app, event):
-    data = {"type": "event", "event": event, "time": str(datetime.now())}
-    await send_ws(app, data)
 
 
 def create_update_task(app, capability, wait_time):
@@ -115,14 +116,25 @@ def create_update_task(app, capability, wait_time):
 
 
 async def update_status(app, capability, wait_time):
+    api = app["api"]
+    app["aibo"][capability] = None
     while True:
-        response = await app["api"].execute(capability)
-
+        response = await api.execute(capability)
         if response.get("status") == "SUCCEEDED":
-            app["aibo"].update(response["result"])
+            new_status = response["result"].get(capability, None)
         else:
-            app["aibo"][capability] = {}
+            new_status = None
 
-        await send_status(app)
+        old_status = app["aibo"][capability]
+        app["aibo"][capability] = new_status
+
+        if new_status != old_status:
+            event = {
+                "deviceId": api.device_id,
+                "data": {capability: new_status},
+                "eventId": capability,
+                "timestamp": int(time.time() * 1000),
+            }
+            await send_ws_event(app, event)
 
         await asyncio.sleep(wait_time)

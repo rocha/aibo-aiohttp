@@ -34,11 +34,12 @@ class Execution:
 
 
 class API:
-    def __init__(self):
+    def __init__(self, device_id=DEVICE_ID):
         rate = MAX_REQUESTS_PER_MINUTE / 60
         self.session = RateLimitedSession(
             rate=rate, max_tokens=10, headers=BASE_HEADERS
         )
+        self.device_id = device_id
         self.event_callbacks = []
 
     async def get_devices(self):
@@ -48,7 +49,7 @@ class API:
             return await response.json()
 
     async def post_capability(self, capability, payload):
-        base, aid = BASE_URL, DEVICE_ID
+        base, aid = BASE_URL, self.device_id
         path = f"{base}/devices/{aid}/capabilities/{capability}/execute"
         async with self.session.post(path, json=payload) as response:
             return await response.json()
