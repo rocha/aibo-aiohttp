@@ -130,7 +130,8 @@ async def _run_update_status(app, capability):
     api = app["api"]
     response = await api.execute(capability)
     if response.get("status") == "SUCCEEDED":
-        new_status = response["result"].get(capability, None)
+        result = response["result"] or {}
+        new_status = result.get(capability, None)
     else:
         new_status = None
 
