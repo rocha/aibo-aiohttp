@@ -94,12 +94,17 @@ class API:
                 "get %s %s/%s", execution.capability, count + 1, execution.retries
             )
 
-            res = await self.get_execution(execution.eid)
+            result = await self.get_execution(execution.eid)
+            status = result.get("status")
+            has_error = "error" in result
 
-            has_error = "error" in res
-            finished = res.get("status") in {"SUCCEEDED", "FAILED"}
+            logger.debug(
+                "got %s %s ", execution.capability, "ERROR" if has_error else status
+            )
+
+            finished = status in {"SUCCEEDED", "FAILED"}
             if finished or has_error:
-                response.update(res)
+                response.update(result)
                 break
 
             count += 1
